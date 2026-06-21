@@ -1,4 +1,4 @@
-import json
+import csv
 import requests
 
 # 1. ESPN Public World Cup API Endpoint
@@ -14,15 +14,15 @@ cleaned_matches = []
 for event in data.get('events', []):
     match_id = event.get('id')
     
-    # Extract match status (e.g., "STATUS_FINAL", "STATUS_IN_PROGRESS")
+    # Extract match status
     status = event.get('status', {}).get('type', {}).get('name')
     
-    # Extract competition details (Stage Name like "Group A" or "Quarterfinals")
-    competition = event.get('competitions', [{}])[0]
-    stage = competition.get('note', 'Tournament Match') 
+    # Extract competition details
+    competitions = event.get('competitions', [{}])[0]
+    stage = competitions.get('note', 'Tournament Match') 
     
-    # ESPN lists teams as "competitors". Usually index 0 is Home, index 1 is Away
-    competitors = competition.get('competitors', [])
+    # ESPN lists teams as competitors. Index 0 is Home, Index 1 is Away
+    competitors = competitions.get('competitors', [])
     if len(competitors) >= 2:
         home_team_data = competitors[0]
         away_team_data = competitors[1]
@@ -30,11 +30,10 @@ for event in data.get('events', []):
         home_name = home_team_data.get('team', {}).get('displayName')
         away_name = away_team_data.get('team', {}).get('displayName')
         
-        # Extract scores (convert to integer, default to 0 if not played yet)
+        # Extract scores
         home_score = int(home_team_data.get('score', 0))
         away_score = int(away_team_data.get('score', 0))
         
-        # Save a clean record of this match
         match_record = {
             "match_id": match_id,
             "stage": stage,
@@ -48,5 +47,13 @@ for event in data.get('events', []):
 
 print(f"Successfully cleaned {len(cleaned_matches)} matches from ESPN!")
 
-# Temporary print to prove it works in GitHub actions log
-print(json.dumps(cleaned_matches[:2], indent=2))
+# 3. Save the data to a CSV file
+csv_filename = "world_cup_matches.csv"
+fields = ["match_id", "stage", "status", "home_team", "away_team", "home_score", "away_score"]
+
+with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:
+    writer = csv.DictWriter(file, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(cleaned_matches)
+
+print(f"Saved data to {csv_filename}")
