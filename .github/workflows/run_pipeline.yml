@@ -1,33 +1,87 @@
-name: Run Football Data Pipeline
+import csv
+import requests
 
-on:
-  schedule:
-    - cron: '0 */2 * * *' 
-  workflow_dispatch:      
+# 1. ESPN Public World Cup API Endpoint
+URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
 
-jobs:
-  run-python-script:
-    runs-on: ubuntu-latest
+# 🚀 THE CRITICAL FIX: Add a standard web browser header. 
+# Without this, ESPN blocks GitHub's cloud server with an empty HTML page.
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
-    steps:
-    - name: Checkout repository code
-      uses: actions/checkout@v5 # Upgraded from v4 to clear the warning
+print("Connecting to ESPN API...")
+response = requests.get(URL, headers=HEADERS)
 
-    - name: Set up Python
-      uses: actions/setup-python@v6 # Upgraded from v5 to clear the warning
-      with:
-        python-version: '3.10'
+# Check if the connection returned an error status code (like 403 or 404)
+if response.status_code != 200:
+    print(f"Error: Server responded with status code {response.status_code}")
+    print("Response text:", response.text[:200])
+    exit(1)
 
-    - name: Install dependencies
-      run: pip install requests
+# Safely check if the response actually contains text data before decoding
+if not response.text.strip():
+    print("Error: Received an empty response body from the server.")
+    exit(1)
 
-    - name: Run Python Script
-      run: python fetch_wc_data.py
+try:
+    data = response.json()
+except requests.exceptions.JSONDecodeError as e:
+    print("Crash prevented! The server sent text that was NOT valid JSON.")
+    print("First 300 characters of response:", response.text[:300])
+    exit(1)
 
-    - name: Commit and Push CSV file back to repository
-      run: |
-        git config --global user.name "GitHub Actions Bot"
-        git config --global user.email "actions@github.com"
-        git add world_cup_matches.csv
-        git commit -m "Automated update of World Cup scores" || exit 0
-        git push
+cleaned_matches = []
+events = data.get('events', [])
+print(f"Found {len(events)} events to process.")
+
+# 2. Extract match data safely using bracket navigation
+for event in events:
+    match_id = event.get('id')
+    status = event.get('status', {}).get('type', {}).get('name', 'UNKNOWN')
+    
+    competitions = event.get('competitions', [])
+    if not competitions:
+        continue
+        
+    match_detail = competitions[0]
+    stage = match_detail.get('note', 'Tournament Match')
+    
+    competitors = match_detail.get('competitors', [])
+    if len(competitors) >= 2:
+        home_team_data = competitors[0]
+        away_team_data = competitors[1]
+        
+        home_name = home_team_data.get('team', {}).get('displayName', 'TBD')
+        away_name = away_team_data.get('team', {}).get('displayName', 'TBD')
+        
+        try:
+            home_score = int(home_team_data.get('score', 0))
+            away_score = int(away_team_data.get('score', 0))
+        except (ValueError, TypeError):
+            home_score = 0
+            away_score = 0
+            
+        match_record = {
+            "match_id": match_id,
+            "stage": stage,
+            "status": status,
+            "home_team": home_name,
+            "away_team": away_name,
+            "home_score": home_score,
+            "away_score": away_score
+        }
+        cleaned_matches.append(match_record)
+
+print(f"Successfully cleaned data for {len(cleaned_matches)} matches!")
+
+# 3. Save directly to a local CSV file inside your repository
+csv_filename = "world_cup_matches.csv"
+fields = ["match_id", "stage", "status", "home_team", "away_team", "home_score", "away_score"]
+
+with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:
+    writer = csv.DictWriter(file, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(cleaned_matches)
+
+print(f"File {csv_filename} successfully created and written.")
