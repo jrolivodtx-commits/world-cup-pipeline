@@ -22,7 +22,7 @@ jobs:
       run: pip install requests
 
     - name: Run Python Script
-      run: python fetch_data.py
+      run: python fetch_wc_data.py
 
     - name: Commit and Push CSV file back to repository
       run: |
