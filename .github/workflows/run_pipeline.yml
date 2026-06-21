@@ -1,0 +1,28 @@
+name: Run Football Data Pipeline
+
+# Tells GitHub when to run this script
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # This syntax tells GitHub to run your code every 2 hours
+  workflow_dispatch:      # This allows you to also click a button to run it manually
+
+jobs:
+  run-python-script:
+    runs-on: ubuntu-latest # Launches a temporary free virtual Linux computer in the cloud
+
+    steps:
+    - name: Checkout repository code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: pip install requests
+
+    - name: Run Python Script
+      env:
+        FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }} # Passes your hidden key to Python
+      run: python fetch_wc_data.py
